@@ -12,10 +12,13 @@ name: Regenerate from the live OpenAPI spec
 #       permissions:
 #         contents: write
 #         pull-requests: write
+#         issues: write
 #       with:
 #         language: go            # node | python | go: which toolchain the checks need
 #         check: go vet ./... && go test ./...
 # Pull requests opened with GITHUB_TOKEN don't trigger other workflows, so the checks run here; their result is in the PR body.
+# If the organization doesn't allow GitHub Actions to create pull requests (Settings → Actions → General), an issue
+# with a link to open the pull request is opened instead.
 
 on:
   workflow_call:
@@ -38,6 +41,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      issues: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -82,8 +86,12 @@ jobs:
           git push -f origin "$branch"
           if [ "$OUTCOME" = success ]; then result="passed"; else result="**failed**: see the [workflow run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)"; fi
           body=$(printf 'The live spec at https://api.pitchmentor.net/v1/openapi.json changed, so `scripts/regen.sh` regenerated the code.\n\nChecks (`%s`) %s.\n\nReview the diff, bump the version if the public API changed, and merge. Close and reopen this PR to run CI on it (PRs opened by GitHub Actions do not trigger workflows).' "$CHECK" "$result")
+          title="Regenerate from the live OpenAPI spec"
           if gh pr view "$branch" --json state -q .state 2>/dev/null | grep -q OPEN; then
             gh pr edit "$branch" --body "$body"
-          else
-            gh pr create --head "$branch" --title "Regenerate from the live OpenAPI spec" --body "$body"
+          elif ! gh pr create --head "$branch" --title "$title" --body "$body"; then
+            echo "::warning::Could not open a pull request (GitHub Actions may not be allowed to); opening an issue instead"
+            body=$(printf '%s\n\n**Open the pull request:** %s/%s/compare/%s...%s?expand=1' "$body" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "${GITHUB_REF_NAME:-main}" "$branch")
+            n=$(gh issue list --state open --search "in:title \"$title\"" --json number -q '.[0].number')
+            if [ -n "$n" ]; then gh issue edit "$n" --body "$body"; else gh issue create --title "$title" --body "$body"; fi
           fi
