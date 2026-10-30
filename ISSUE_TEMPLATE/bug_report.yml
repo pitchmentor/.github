@@ -1,0 +1,44 @@
+name: Bug report
+description: Something in a Pitch Mentor client doesn't work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Security problems go to our [security policy](https://github.com/pitchmentor/.github/blob/main/SECURITY.md), not here.
+        **Never paste API keys (`pm_live_…`) or webhook secrets (`whsec_…`).**
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproduction
+      description: The smallest code or command that shows the problem.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error output
+      description: Full error message (status, code and message of a `PitchMentorError`) and stack trace.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Package version
+      placeholder: "@pitchmentor/sdk 0.1.1 / pitchmentor 0.1.1 / pitchmentor-go v0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: runtime
+    attributes:
+      label: Runtime and OS
+      placeholder: "Node 22.11 on macOS 15 / Python 3.12 on Ubuntu 24.04 / Go 1.24"
+    validations:
+      required: true

@@ -1,0 +1,89 @@
+name: Regenerate from the live OpenAPI spec
+
+# Reusable: runs the caller's `scripts/regen.sh` (downloads https://api.pitchmentor.net/v1/openapi.json and regenerates),
+# runs the caller's checks on the result, and opens or updates a pull request from branch `regen/openapi` when
+# anything changed. The caller grants the permissions:
+#   on:
+#     schedule: [{ cron: "17 6 * * 1" }]
+#     workflow_dispatch:
+#   jobs:
+#     regen:
+#       uses: pitchmentor/.github/.github/workflows/regen.yml@<sha> # v1
+#       permissions:
+#         contents: write
+#         pull-requests: write
+#       with:
+#         language: go            # node | python | go: which toolchain the checks need
+#         check: go vet ./... && go test ./...
+# Pull requests opened with GITHUB_TOKEN don't trigger other workflows, so the checks run here; their result is in the PR body.
+
+on:
+  workflow_call:
+    inputs:
+      language:
+        description: "Toolchain to install besides Node: node, python or go"
+        type: string
+        required: true
+      check:
+        description: Shell command that builds and tests the regenerated code
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  regen:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - if: inputs.language == 'python'
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - if: inputs.language == 'go'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: scripts/regen.sh
+      - id: diff
+        run: |
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "The live spec matches the committed code; nothing to do."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            git status --short
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+      - id: check
+        if: steps.diff.outputs.changed == 'true'
+        continue-on-error: true
+        env:
+          CHECK: ${{ inputs.check }}
+        run: bash -euo pipefail -c "$CHECK"
+      - if: steps.diff.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHECK: ${{ inputs.check }}
+          OUTCOME: ${{ steps.check.outcome }}
+        run: |
+          branch=regen/openapi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -C "$branch"
+          git add -A
+          git commit -q -m "Regenerate from the live OpenAPI spec"
+          git push -f origin "$branch"
+          if [ "$OUTCOME" = success ]; then result="passed"; else result="**failed**: see the [workflow run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)"; fi
+          body=$(printf 'The live spec at https://api.pitchmentor.net/v1/openapi.json changed, so `scripts/regen.sh` regenerated the code.\n\nChecks (`%s`) %s.\n\nReview the diff, bump the version if the public API changed, and merge. Close and reopen this PR to run CI on it (PRs opened by GitHub Actions do not trigger workflows).' "$CHECK" "$result")
+          if gh pr view "$branch" --json state -q .state 2>/dev/null | grep -q OPEN; then
+            gh pr edit "$branch" --body "$body"
+          else
+            gh pr create --head "$branch" --title "Regenerate from the live OpenAPI spec" --body "$body"
+          fi

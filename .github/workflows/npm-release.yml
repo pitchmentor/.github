@@ -1,0 +1,67 @@
+name: npm package release
+
+# Reusable: on a `vX.Y.Z` tag, check the version, test, publish to npm with provenance and create the GitHub Release.
+# The caller grants the permissions:
+#   on:
+#     push:
+#       tags: ["v*"]
+#   jobs:
+#     release:
+#       uses: pitchmentor/.github/.github/workflows/npm-release.yml@<sha> # v1
+#       permissions:
+#         contents: write # GitHub Release
+#         id-token: write # npm provenance
+#       secrets:
+#         NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+# Re-runnable: an already-published version and an existing GitHub Release are skipped.
+
+on:
+  workflow_call:
+    secrets:
+      NPM_TOKEN:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: npm
+      - name: Tag matches the package version
+        run: scripts/check-version.sh "$GITHUB_REF_NAME"
+      - run: npm ci
+      - run: npm test
+      - name: Publish to npm with provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          name=$(node -p "require('./package.json').name")
+          version=$(node -p "require('./package.json').version")
+          if npm view "$name@$version" version >/dev/null 2>&1; then
+            echo "$name@$version is already on npm, skipping publish"
+          else
+            npm publish --provenance --access public
+          fi
+          echo "PKG_NAME=$name" >> "$GITHUB_ENV"
+      - name: GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME already exists"
+            exit 0
+          fi
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" --generate-notes \
+            --notes "Published to npm: [\`$PKG_NAME@${GITHUB_REF_NAME#v}\`](https://www.npmjs.com/package/$PKG_NAME/v/${GITHUB_REF_NAME#v}) (with [provenance](https://www.npmjs.com/package/$PKG_NAME/v/${GITHUB_REF_NAME#v}#provenance))."

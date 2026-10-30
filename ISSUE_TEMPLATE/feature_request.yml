@@ -1,0 +1,28 @@
+name: Feature request
+description: Suggest an improvement to a Pitch Mentor client.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Want a new API endpoint or field? The clients are generated from the API, so ask on [Discord](https://discord.gg/SkcxVEJ6wQ) and we'll track it there.
+        This form is for client features: ergonomics, helpers, CLI commands, MCP tools.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe what you're trying to do and what gets in the way today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How you'd like it to work. Code snippets of the API you'd want to write are great.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds you use today or other approaches you thought about.
